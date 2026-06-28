@@ -15,6 +15,7 @@ The server exposes two tools:
 from mcp.server.fastmcp import FastMCP
 import httpx
 import anthropic
+import base64
 import os
 from dotenv import load_dotenv
 import config                    # ← import your config
@@ -42,6 +43,17 @@ def repo_has_cv_tag(repo_name: str) -> bool:
     topics = response.json().get("names", [])
     return "cv-page" in topics
 
+def should_process_repo(repo_name: str) -> bool:
+    """
+    Gate function: decides if repo should get a portfolio card
+    Skips repos in the exclusion list (e.g. the agent itself),
+    even if they carry a cv-page tag, to prevent corcular updates.
+    """
+    if repo_name in config.EXCLUDED_REPOS:
+        print(f"{repo_name} is in EXCLUDED_REPOS - skipping.")
+        return False
+    return repo_has_cv_tag(repo_name)
+
 # Tool 2: Read README from GitHub
 @mcp.tool()
 def get_repo_readme(repo_name: str) -> str:
@@ -61,7 +73,6 @@ def get_repo_readme(repo_name: str) -> str:
 
 # Tool 3: Generate HTML project card using Claude 
 @mcp.tool()
-
 def generate_card(readme_text: str, repo_name: str) -> str:
     """
     Given a README text and repo name, generate a styled HTML project card.
@@ -155,8 +166,6 @@ def push_to_github(updated_html: str) -> str:
     Commits and pushes the updated index.html back to the portfolio repo.
     Requires GITHUB_TOKEN in .env with repo write permissions.
     """
-    import base64
-
     token = os.getenv("GITHUB_TOKEN")
     if not token:
         return "Error: GITHUB_TOKEN not found in .env"
@@ -200,10 +209,10 @@ def push_to_github(updated_html: str) -> str:
 
 # ── Test 
 if __name__ == "__main__":
-    repo_name = "wattwise-app"  # ← define first
+    repo_name = "cv-page-agent"  # ← define first
 
-    if not repo_has_cv_tag(repo_name):
-        print(f"⚠️ Repo '{repo_name}' is not tagged 'cv-page' — skipping.")
+    if not should_process_repo(repo_name):
+        print(f"⚠️ Repo '{repo_name}' is skipped.")
     else:
         # Only runs if tag exists
         print("Fetching README...")
