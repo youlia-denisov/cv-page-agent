@@ -13,6 +13,21 @@ Install pytest if needed:
     pip install pytest
 """
 
+"""
+test_portfolio_agent.py
+=======================
+Basic tests for the portfolio MCP pipeline.
+
+Using unit tests for the core logic, and pytest for the overall pipeline.
+This type of tests is independent of the MCP framework, and can be run without any API keys or network access.
+
+Run with:
+    pytest test_portfolio_agent.py -v
+
+Install pytest if needed:
+    pip install pytest
+"""
+
 import pytest
 
 # ── What we're testing ───────────────────────────────────────────────────────
@@ -205,6 +220,96 @@ def test_readme_fetch_404(monkeypatch):
         result = get_repo_readme("nonexistent-repo")
         # Should return an error message, not crash
         assert "404" in result or "Could not" in result.lower()
+    except ImportError:
+        pytest.skip("server.py not importable from test location")
+
+
+# ── 5. TESTING PUSH TO GITHUB — MOCKED ──────────────────────────────────────
+# push_to_github is the highest-stakes function in the pipeline: it writes to
+# your real repo. Two HTTP calls happen here (GET the current sha, then PUT
+# the new content) — like confirming the right tube before you overwrite it,
+# then labeling and filing the new one.
+
+def test_push_success(monkeypatch):
+    """A 200 on both the sha-fetch and the PUT should report success."""
+    import httpx
+
+    class FakeGetResponse:
+        status_code = 200
+        def json(self):
+            return {"sha": "abc123"}
+
+    class FakePutResponse:
+        status_code = 200
+        text = ""
+
+    monkeypatch.setattr(httpx, "get", lambda url, headers=None: FakeGetResponse())
+    monkeypatch.setattr(httpx, "put", lambda url, headers=None, json=None: FakePutResponse())
+    monkeypatch.setenv("GITHUB_TOKEN", "fake-token")
+
+    try:
+        from server import push_to_github
+        result = push_to_github("<html>updated</html>")
+        assert "✅" in result
+    except ImportError:
+        pytest.skip("server.py not importable from test location")
+
+
+def test_push_failure(monkeypatch):
+    """A non-200 on the PUT should report failure, not crash or claim success."""
+    import httpx
+
+    class FakeGetResponse:
+        status_code = 200
+        def json(self):
+            return {"sha": "abc123"}
+
+    class FakePutResponse:
+        status_code = 409
+        text = "sha mismatch"
+
+    monkeypatch.setattr(httpx, "get", lambda url, headers=None: FakeGetResponse())
+    monkeypatch.setattr(httpx, "put", lambda url, headers=None, json=None: FakePutResponse())
+    monkeypatch.setenv("GITHUB_TOKEN", "fake-token")
+
+    try:
+        from server import push_to_github
+        result = push_to_github("<html>updated</html>")
+        assert "❌" in result
+    except ImportError:
+        pytest.skip("server.py not importable from test location")
+
+
+def test_push_without_token(monkeypatch):
+    """Missing GITHUB_TOKEN should fail fast with a clear message — no network call at all."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+    try:
+        from server import push_to_github
+        result = push_to_github("<html>updated</html>")
+        assert "GITHUB_TOKEN" in result
+    except ImportError:
+        pytest.skip("server.py not importable from test location")
+
+
+# ── 6. TESTING CARD GENERATION — MOCKED CLAUDE CALL ─────────────────────────
+# generate_card calls the Anthropic API. We don't want tests to spend real
+# tokens or depend on the model's live output, so we mock claude.messages.create
+# and just check the plumbing: the fake response text comes back untouched.
+
+def test_generate_card_returns_claude_text(monkeypatch):
+    """generate_card should return exactly what claude.messages.create gives back."""
+    class FakeContentBlock:
+        text = '<div class="project-card">mock card</div>'
+
+    class FakeMessage:
+        content = [FakeContentBlock()]
+
+    try:
+        import server
+        monkeypatch.setattr(server.claude.messages, "create", lambda **kwargs: FakeMessage())
+        result = server.generate_card("# Some README", "some-repo")
+        assert result == '<div class="project-card">mock card</div>'
     except ImportError:
         pytest.skip("server.py not importable from test location")
 
