@@ -209,11 +209,11 @@ def push_to_github(updated_html: str) -> str:
 
 # ── Test 
 if __name__ == "__main__":
-    repo_name = "cv-page-agent"  # ← define first
+    repo_name = os.getenv("REPO_NAME", "cv-page-agent") 
 
     if not should_process_repo(repo_name):
         print(f"⚠️ Repo '{repo_name}' is skipped.")
-    else:
+    else: 
         # Only runs if tag exists
         print("Fetching README...")
         readme = get_repo_readme(repo_name)
