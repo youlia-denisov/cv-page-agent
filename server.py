@@ -212,9 +212,9 @@ def push_to_github(updated_html: str) -> str:
 
 # ── Test 
 if __name__ == "__main__":
-     repo_name = os.getenv("REPO_NAME", "cv-page-agent")   
+    repo_name = os.getenv("REPO_NAME", "cv-page-agent")   
      
-     if not should_process_repo(repo_name):
+    if not should_process_repo(repo_name):
         print(f"⚠️ Repo '{repo_name}' is skipped.")
     else:
         # Only runs if tag exists
