@@ -17,8 +17,9 @@ import httpx
 import anthropic
 import base64
 import os
+import sys
 from dotenv import load_dotenv
-import config                    # ← import your config
+import config                    
 
 load_dotenv()
 
@@ -48,14 +49,20 @@ def repo_has_cv_tag(repo_name: str) -> bool:
 
 def should_process_repo(repo_name: str) -> bool:
     """
-    Gate function: decides if repo should get a portfolio card
-    Skips repos in the exclusion list (e.g. the agent itself),
-    even if they carry a cv-page tag, to prevent corcular updates.
+    Gate function: decides if repo should get a portfolio card.
+    Exits directly instead of just returning False, so a skip shows up
+    as a clear log line/exit code -- not a silent no-op that looks
+    identical to a real update in the Actions summary.
     """
     if repo_name in config.EXCLUDED_REPOS:
-        print(f"{repo_name} is in EXCLUDED_REPOS - skipping.")
-        return False
-    return repo_has_cv_tag(repo_name)
+        print(f"{repo_name} is in EXCLUDED_REPOS - skipping (expected).")
+        sys.exit(0)
+
+    if not repo_has_cv_tag(repo_name):
+        print(f"❌ Repo '{repo_name}' does not have the 'cv-page' tag.")
+        sys.exit(1)
+
+    return True
 
 # Tool 2: Read README from GitHub
 @mcp.tool()
@@ -212,28 +219,32 @@ def push_to_github(updated_html: str) -> str:
 
 # ── Test 
 if __name__ == "__main__":
-<<<<<<< HEAD
-     repo_name = os.getenv("REPO_NAME", "cv-page-agent")   # ← define first
-=======
     repo_name = os.getenv("REPO_NAME", "cv-page-agent")
->>>>>>> 84448beb2b906b74a69ad53fc81ded3e5be8e251
 
-    if not should_process_repo(repo_name):
-        print(f"⚠️ Repo '{repo_name}' is skipped.")
-    else:
-        # Only runs if tag exists
-        print("Fetching README...")
-        readme = get_repo_readme(repo_name)
+    should_process_repo(repo_name)  # exits here if the repo should be skipped
 
-        print("Generating card...")
-        card = generate_card(readme, repo_name)
+    print("Fetching README...")
+    readme = get_repo_readme(repo_name)
 
-        print("\nUpdating portfolio HTML...")
-        updated_html = update_portfolio(card, repo_name)
+    print("Generating card...")
+    card = generate_card(readme, repo_name)
 
-        if updated_html.startswith("⚠️"):
-            print(updated_html)
-        else:
-            print("\nPushing to GitHub...")
-            result = push_to_github(updated_html)
-            print(result)
+    print("\nUpdating portfolio HTML...")
+    updated_html = update_portfolio(card, repo_name)
+
+    if updated_html.startswith("⚠️"):
+        print(updated_html)  # card already exists -- expected, not a failure
+        sys.exit(0)
+
+    if not updated_html.lower().lstrip().startswith("<!doctype"):
+        # anything else means update_portfolio hit an error path
+        # (e.g. "Could not fetch index.html...", "Marker ... not found")
+        print(f"❌ {updated_html}")
+        sys.exit(1)
+
+    print("\nPushing to GitHub...")
+    result = push_to_github(updated_html)
+    print(result)
+
+    if result.startswith("❌"):
+        sys.exit(1)
