@@ -24,6 +24,9 @@ load_dotenv()
 
 mcp = FastMCP("Portfolio Agent")
 claude = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+if not os.getenv("ANTHROPIC_API_KEY"):
+    print("❌ ANTHROPIC_API_KEY is missing or empty — check this repo's Actions secrets.")
+    raise SystemExit(1)
 
 # Tool 1: Check if repo has cv-page tag
 
@@ -209,7 +212,7 @@ def push_to_github(updated_html: str) -> str:
 
 # ── Test 
 if __name__ == "__main__":
-    repo_name = "cv-page-agent"  # ← define first
+     repo_name = os.getenv("REPO_NAME", "cv-page-agent")   # ← define first
 
     if not should_process_repo(repo_name):
         print(f"⚠️ Repo '{repo_name}' is skipped.")
